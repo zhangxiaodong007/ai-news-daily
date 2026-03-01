@@ -18,7 +18,7 @@ SMTP_USER = os.getenv("SMTP_USER")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 TO_EMAIL = os.getenv("TO_EMAIL")
 
-ITEMS_PER_SOURCE = 5
+ITEMS_PER_SOURCE = 10
 
 RSS_SOURCES = [
     "http://arxiv.org/rss/cs.LG",
