@@ -1,0 +1,37 @@
+name: AI News Daily
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # 每天 UTC 0 点（北京时间 8 点）
+  workflow_dispatch:  # 支持手动触发
+
+jobs:
+  fetch-and-send:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install feedparser
+
+      - name: Run AI News Aggregator
+        env:
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          TO_EMAIL: ${{ secrets.TO_EMAIL }}
+        run: python ai_news_aggregator.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-news-html
+          path: ai_news.html
