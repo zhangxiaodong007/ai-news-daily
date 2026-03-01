@@ -8,6 +8,16 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
+import html as html_module
+"""
+AI News Aggregator - 每天自动抓取AI新闻并发送到邮箱
+"""
+
+import os
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from datetime import datetime
 import html
 
 # ========== 配置 ==========
@@ -143,7 +153,7 @@ def generate_html(news_items):
     for source_name, items in sources.items():
         html += f"""
         <div class="source-section">
-            <div class="source-title">{html.escape(str(source_name))}</div>
+            <div class="source-title">{html_module.escape(str(source_name))}</div>
 """
         for item in items:
             meta = item.get("published", "")
@@ -151,7 +161,9 @@ def generate_html(news_items):
                 meta = f" · {meta}"
             html += f"""
             <div class="item">
-                <div class="item-title"><a href="{html.escape(item['link'])}" target="_blank">{html.escape(item['title'])}</a></div>
+                <div class="item-title"><a href="{html_module.escape(item['link'])}" target="_blank">{html_module.escape(item['title'])}</a></div>
+                <div class="item-meta">{html_module.escape(item['source'])}{html_module.escape(meta)}</div>
+                <div class="item-summary">{html_module.escape(item['summary'])}</div>
                 <div class="item-meta">{html.escape(item['source'])}{html.escape(meta)}</div>
                 <div class="item-summary">{html.escape(item['summary'])}</div>
             </div>
