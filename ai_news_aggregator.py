@@ -1,21 +1,29 @@
 #!/usr/bin/env python3
 """
-AI News Aggregator - 每天自动抓取AI新闻并发送到邮箱
+微信公众号文章发布脚本
 """
 
 import os
 import smtplib
 import re
+import json
+import time
+import requests
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
-import html as html_module
 
+# ========== 配置 ==========
 SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USER = os.getenv("SMTP_USER")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 TO_EMAIL = os.getenv("TO_EMAIL")
+
+# 微信公众号配置
+WX_APPID = os.getenv("WX_APPID", "")
+WX_APPSECRET = os.getenv("WX_APPSECRET", "")
+WX_PUBLISH = os.getenv("WX_PUBLISH", "false").lower() == "true"
 
 ITEMS_PER_SOURCE = 15
 
@@ -39,8 +47,89 @@ BOOST_KEYWORDS = [
     "openai", "gpt", "anthropic", "claude", "gemini", "chatgpt",
     "breakthrough", "launch", "release", "announce",
     "model", "research", "investment", "funding",
-    "模型", "发布", "融资", "突破",
 ]
+
+TOKEN_FILE = "wechat_token.json"
+
+def get_access_token():
+    if os.path.exists(TOKEN_FILE):
+        with open(TOKEN_FILE, "r") as f:
+            data = json.load(f)
+            if time.time() - data.get("time", 0) < 7200 - 300:
+                print(f"Using cached token: {data.get('token', '')[:10]}...")
+                return data.get("token")
+    
+    url = f"https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid={WX_APPID}&secret={WX_APPSECRET}"
+    try:
+        resp = requests.get(url, timeout=10)
+        result = resp.json()
+        if "access_token" in result:
+            token = result["access_token"]
+            with open(TOKEN_FILE, "w") as f:
+                json.dump({"token": token, "time": time.time()}, f)
+            print(f"Got new token: {token[:10]}...")
+            return token
+        else:
+            print(f"Failed to get token: {result}")
+            return None
+    except Exception as e:
+        print(f"Error getting token: {e}")
+        return None
+
+def create_draft(title, content, author="AI News"):
+    token = get_access_token()
+    if not token:
+        return None
+    
+    url = f"https://api.weixin.qq.com/cgi-bin/draft/add?access_token={token}"
+    
+    content = re.sub(r'<script[^>]*>.*?</script>', '', content, flags=re.DOTALL)
+    content = re.sub(r'<style[^>]*>.*?</style>', '', content, flags=re.DOTALL)
+    
+    data = {
+        "articles": [{
+            "title": title,
+            "author": author,
+            "content": content,
+            "content_source_url": "",
+            "digest": content[:120],
+            "show_cover_pic": 1,
+        }]
+    }
+    
+    try:
+        resp = requests.post(url, json=data, timeout=30)
+        result = resp.json()
+        if result.get("errcode") == 0:
+            print(f"Draft created: {result.get('media_id')}")
+            return result.get("media_id")
+        else:
+            print(f"Failed to create draft: {result}")
+            return None
+    except Exception as e:
+        print(f"Error creating draft: {e}")
+        return None
+
+def publish_draft(media_id):
+    token = get_access_token()
+    if not token:
+        return False
+    
+    url = f"https://api.weixin.qq.com/cgi-bin/freepublish?access_token={token}"
+    data = {"media_id": media_id, "appmsg_id": ""}
+    
+    try:
+        resp = requests.post(url, json=data, timeout=30)
+        result = resp.json()
+        if result.get("errcode") == 0:
+            print(f"Published! publish_id: {result.get('publish_id')}")
+            return True
+        else:
+            print(f"Failed to publish: {result}")
+            return False
+    except Exception as e:
+        print(f"Error publishing: {e}")
+        return False
 
 def get_importance(title, source_url):
     score = 3
@@ -55,9 +144,9 @@ def get_importance(title, source_url):
     score = max(1, min(10, score))
     
     if score >= 7:
-        return "[🔥热门]"
+        return "[热门]"
     elif score >= 5:
-        return "[⭐重要]"
+        return "[重要]"
     elif score >= 3:
         return "[一般]"
     else:
@@ -67,7 +156,6 @@ def clean_html(text):
     if not text:
         return ""
     text = re.sub(r'<[^>]+>', '', text)
-    text = html_module.unescape(text)
     return text.strip()
 
 def fetch_rss_items(url, limit=15):
@@ -85,7 +173,6 @@ def fetch_rss_items(url, limit=15):
             link = entry.get("link", "")
             importance = get_importance(title, link)
             
-            # 计算得分
             score = sum(1 for kw in BOOST_KEYWORDS if kw.lower() in title.lower())
             score += SOURCE_WEIGHTS.get([d for d in SOURCE_WEIGHTS if d in link][0], 3)
             
@@ -103,9 +190,7 @@ def fetch_rss_items(url, limit=15):
         print(f"Error fetching {url}: {e}")
         return []
 
-def generate_html(news_items):
-    esc = html_module.escape
-    
+def generate_wechat_html(news_items):
     sources = {}
     for item in news_items:
         src = item.get("source", "Unknown")
@@ -116,57 +201,39 @@ def generate_html(news_items):
     news_items_sorted = sorted(news_items, key=lambda x: x.get("score", 0), reverse=True)
     top_items = [i for i in news_items_sorted if i.get("score", 0) >= 6]
     
-    html = f"""<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <style>
-        body {{ font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin: 0; background: #f5f5f5; }}
-        .container {{ max-width: 700px; margin: 0 auto; background: #fff; }}
-        .header {{ background: #1a1a2e; color: #fff; padding: 25px; text-align: center; }}
-        .header h1 {{ margin: 0; font-size: 24px; }}
-        .header .date {{ margin-top: 8px; color: #ccc; }}
-        .header .stats {{ margin-top: 8px; font-size: 12px; color: #999; }}
-        .source-section {{ padding: 15px 20px; border-bottom: 1px solid #eee; }}
-        .source-title {{ font-size: 15px; font-weight: 600; color: #333; margin-bottom: 12px; }}
-        .item {{ padding: 12px 0; border-bottom: 1px solid #f0f0f0; }}
-        .item:last-child {{ border-bottom: none; }}
-        .item-title {{ font-size: 14px; font-weight: 600; line-height: 1.4; }}
-        .item-title a {{ color: #1a1a2e; text-decoration: none; }}
-        .imp-hot {{ color: #ef4444; font-weight: bold; }}
-        .imp-star {{ color: #f59e0b; font-weight: bold; }}
-        .item-meta {{ margin-top: 4px; font-size: 12px; color: #999; }}
-        .item-summary {{ margin-top: 6px; font-size: 13px; color: #666; line-height: 1.5; }}
-        .footer {{ padding: 20px; text-align: center; color: #999; font-size: 12px; }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>AI 动态简报</h1>
-            <div class="date">{datetime.now().strftime('%Y年%m月%d日')}</div>
-            <div class="stats">共 {len(news_items)} 条 · {len(sources)} 个来源</div>
-        </div>
+    html = f"""
+<p style="text-align: center;"><strong><span style="font-size: 18px;">🤖 AI 动态简报</span></strong></p>
+<p style="text-align: center; color: #888;">{datetime.now().strftime('%Y年%m月%d日')} · 共 {len(news_items)} 条 · {len(sources)} 个来源</p>
+<hr/>
 """
     
     if top_items:
-        html += '<div class="source-section"><div class="source-title">🔥 重要新闻</div>'
+        html += f"<p style='color: #e74c3c;'><strong>🔥 重要新闻</strong></p>"
         for item in top_items[:10]:
-            meta = f" · {item['published']}" if item.get('published') else ""
+            meta = f" [{item['published']}]" if item.get('published') else ""
             imp = item.get("importance", "")
-            imp_class = "imp-hot" if "热门" in imp else "imp-star"
-            html += f'<div class="item"><div class="item-title"><a href="{esc(item["link"])}">{esc(item["title"])}</a> <span class="{imp_class}">{esc(imp)}</span></div><div class="item-meta">{esc(item["source"])}{esc(meta)}</div><div class="item-summary">{esc(item["summary"])}</div></div>'
-        html += '</div>'
+            html += f"""
+<p><strong><a href="{item['link']}">{item['title']}</a></strong> {imp}</p>
+<p style="color: #888; font-size: 12px;">{item['source']}{meta}</p>
+<p>{item['summary']}</p>
+<hr/>
+"""
     
     for source_name, items in sources.items():
-        html += f'<div class="source-section"><div class="source-title">{esc(str(source_name))}</div>'
+        html += f"<p><strong>{source_name}</strong></p>"
         for item in items:
-            meta = f" · {item['published']}" if item.get('published') else ""
+            meta = f" [{item['published']}]" if item.get('published') else ""
             imp = item.get("importance", "")
-            html += f'<div class="item"><div class="item-title"><a href="{esc(item["link"])}">{esc(item["title"])}</a> <span>{esc(imp)}</span></div><div class="item-meta">{esc(item["source"])}{esc(meta)}</div><div class="item-summary">{esc(item["summary"])}</div></div>'
-        html += '</div>'
+            html += f"""
+<p><strong><a href="{item['link']}">{item['title']}</a></strong> {imp}</p>
+<p style="color: #888; font-size: 12px;">{item['source']}{meta}</p>
+<p>{item['summary']}</p>
+"""
     
-    html += '<div class="footer"><p>由 GitHub Actions 自动生成</p></div></div></body></html>'
+    html += f"""
+<hr/>
+<p style="text-align: center; color: #888; font-size: 12px;">由 GitHub Actions 自动生成</p>
+"""
     return html
 
 def send_email(html_content, news_items):
@@ -202,12 +269,19 @@ def main():
     
     print(f"Total: {len(all_news)} items")
     
-    html = generate_html(all_news)
+    wechat_html = generate_wechat_html(all_news)
     
     with open("ai_news.html", "w", encoding="utf-8") as f:
-        f.write(html)
+        f.write(wechat_html)
     
-    send_email(html, all_news)
+    send_email(wechat_html, all_news)
+    
+    if WX_PUBLISH and WX_APPID and WX_APPSECRET:
+        title = f"AI 动态简报 {datetime.now().strftime('%Y年%m月%d日')}"
+        media_id = create_draft(title, wechat_html)
+        if media_id:
+            publish_draft(media_id)
+    
     print("Done!")
 
 if __name__ == "__main__":
