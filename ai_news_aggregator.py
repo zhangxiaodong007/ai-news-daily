@@ -20,14 +20,13 @@ TO_EMAIL = os.getenv("TO_EMAIL")
 
 ITEMS_PER_SOURCE = 10
 
+# RSS 源：The Rundown AI, Ben's Bites, AI Weekly, 机器之心, 36氪
 RSS_SOURCES = [
     "https://rss.beehiiv.com/the-rundown-ai",
     "https://www.bensbites.com/feed",
+    "https://www.aiweekly.co/feed",
     "https://www.jiqizhixin.com/?feed=rss2",
-]
-    "http://arxiv.org/rss/cs.LG",
-    "https://techcrunch.com/category/artificial-intelligence/feed/",
-    "https://www.jiqizhixin.com/?feed=rss2",
+    "https://www.36kr.com/information/AI/",
 ]
 
 def clean_html(text):
@@ -37,7 +36,7 @@ def clean_html(text):
     text = html_module.unescape(text)
     return text.strip()
 
-def fetch_rss_items(url, limit=5):
+def fetch_rss_items(url, limit=10):
     try:
         import feedparser
         feed = feedparser.parse(url)
