@@ -18,8 +18,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: |
-          pip install feedparser
+        run: pip install feedparser requests
 
       - name: Run AI News Aggregator
         env:
@@ -28,6 +27,9 @@ jobs:
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           TO_EMAIL: ${{ secrets.TO_EMAIL }}
+          WX_APPID: ${{ secrets.WX_APPID }}
+          WX_APPSECRET: ${{ secrets.WX_APPSECRET }}
+          WX_PUBLISH: ${{ secrets.WX_PUBLISH }}
         run: python ai_news_aggregator.py
 
       - name: Upload artifact
