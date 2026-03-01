@@ -23,16 +23,10 @@ ITEMS_PER_SOURCE = 15
 # RSS 源 - 使用更可靠的来源
 RSS_SOURCES = [
     "https://techcrunch.com/category/artificial-intelligence/feed/",
-    "http://arxiv.org/rss/cs.LG",
-    "https://www.36kr.com/information/AI/",
-    "https://www.jiqizhixin.com/?feed=rss2",
-]
-RSS_SOURCES = [
-    "https://rss.beehiiv.com/the-rundown-ai",
+    "https://www.theverge.com/rss/ai/index.xml",
+    "https://wired.com/feed/tag/ai/rss",
     "https://www.bensbites.com/feed",
-    "https://www.aiweekly.co/feed",
-    "https://www.jiqizhixin.com/?feed=rss2",
-    "https://www.36kr.com/information/AI/",
+    "https://venturebeat.com/category/ai/feed/",
 ]
 
 def clean_html(text):
@@ -138,7 +132,7 @@ def generate_html(news_items):
 """
     return html
 
-def send_email(html_content):
+def send_email(html_content, news_items):
     if not all([SMTP_USER, SMTP_PASSWORD, TO_EMAIL]):
         print("Missing email config")
         return False
@@ -161,7 +155,6 @@ def send_email(html_content):
         return False
 
 def main():
-    global news_items
     print("Fetching AI news...")
     all_news = []
     
@@ -169,10 +162,7 @@ def main():
         items = fetch_rss_items(source, limit=ITEMS_PER_SOURCE)
         print(f"{source}: {len(items)} items")
         all_news.extend(items)
-        items = fetch_rss_items(source, limit=ITEMS_PER_SOURCE)
-        all_news.extend(items)
     
-    news_items = all_news
     print(f"Total: {len(all_news)} items")
     
     html = generate_html(all_news)
@@ -180,7 +170,7 @@ def main():
     with open("ai_news.html", "w", encoding="utf-8") as f:
         f.write(html)
     
-    send_email(html)
+    send_email(html, all_news)
     print("Done!")
 
 if __name__ == "__main__":
