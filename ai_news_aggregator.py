@@ -20,7 +20,13 @@ TO_EMAIL = os.getenv("TO_EMAIL")
 
 ITEMS_PER_SOURCE = 15
 
-# RSS 源
+# RSS 源 - 使用更可靠的来源
+RSS_SOURCES = [
+    "https://techcrunch.com/category/artificial-intelligence/feed/",
+    "http://arxiv.org/rss/cs.LG",
+    "https://www.36kr.com/information/AI/",
+    "https://www.jiqizhixin.com/?feed=rss2",
+]
 RSS_SOURCES = [
     "https://rss.beehiiv.com/the-rundown-ai",
     "https://www.bensbites.com/feed",
@@ -160,6 +166,9 @@ def main():
     all_news = []
     
     for source in RSS_SOURCES:
+        items = fetch_rss_items(source, limit=ITEMS_PER_SOURCE)
+        print(f"{source}: {len(items)} items")
+        all_news.extend(items)
         items = fetch_rss_items(source, limit=ITEMS_PER_SOURCE)
         all_news.extend(items)
     
