@@ -8,8 +8,7 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
-import urllib.request
-import json
+import html
 
 # ========== 配置 ==========
 SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
@@ -18,8 +17,10 @@ SMTP_USER = os.getenv("SMTP_USER")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 TO_EMAIL = os.getenv("TO_EMAIL")
 
-# RSS 源（可自行增减）
-# 注意：Ben's Bites 和 The Rundown AI 是 Newsletter 无公开 RSS
+# 每个源抓取数量
+ITEMS_PER_SOURCE = 15
+
+# RSS 源
 RSS_SOURCES = [
     # 学术
     "http://arxiv.org/rss/cs.LG",
@@ -37,71 +38,127 @@ RSS_SOURCES = [
     "https://www.jiqizhixin.com/?feed=rss2",
     "https://www.36kr.com/information/AI/",
 ]
-RSS_SOURCES = [
-    "http://arxiv.org/rss/cs.LG",
-    "https://techcrunch.com/category/artificial-intelligence/feed/",
-    "https://www.jiqizhixin.com/?feed=rss2",
-]
 
-def fetch_rss_items(url, limit=5):
+def clean_html(text):
+    """清理HTML标签"""
+    import re
+    if not text:
+        return ""
+    # 移除HTML标签
+    text = re.sub(r'<[^>]+>', '', text)
+    # 解码HTML实体
+    text = html.unescape(text)
+    return text.strip()
+
+def fetch_rss_items(url, limit=15):
     """抓取 RSS 源"""
     try:
         import feedparser
         feed = feedparser.parse(url)
-        return [
-            {
+        items = []
+        for entry in feed.entries[:limit]:
+            # 获取发布日期
+            published = ""
+            if hasattr(entry, 'published'):
+                published = entry.published[:10]
+            elif hasattr(entry, 'updated'):
+                published = entry.updated[:10]
+            
+            # 清理摘要
+            summary = clean_html(entry.get("summary", entry.get("description", "")))
+            
+            items.append({
                 "title": entry.get("title", "Untitled"),
                 "link": entry.get("link", ""),
-                "summary": entry.get("summary", entry.get("description", ""))[:200],
+                "summary": summary[:500] if summary else "无摘要",
+                "published": published,
                 "source": feed.feed.get("title", url)
-            }
-            for entry in feed.entries[:limit]
-        ]
+            })
+        return items
     except Exception as e:
         print(f"Error fetching {url}: {e}")
         return []
 
 def generate_html(news_items):
     """生成 HTML 邮件内容"""
+    # 按来源分组
+    sources = {}
+    for item in news_items:
+        src = item.get("source", "Unknown")
+        if src not in sources:
+            sources[src] = []
+        sources[src].append(item)
+    
     html = f"""
-    <html>
-    <head>
-        <meta charset="utf-8">
-        <style>
-            body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }}
-            .header {{ background: #1a1a2e; color: white; padding: 20px; text-align: center; }}
-            .item {{ border-bottom: 1px solid #eee; padding: 15px 0; }}
-            .title {{ font-size: 16px; font-weight: 600; color: #1a1a2e; }}
-            .summary {{ color: #666; font-size: 14px; margin-top: 5px; }}
-            .source {{ color: #999; font-size: 12px; margin-top: 5px; }}
-            .footer {{ text-align: center; color: #999; font-size: 12px; padding: 20px; }}
-        </style>
-    </head>
-    <body>
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; margin: 0; padding: 0; background: #f5f5f5; }}
+        .container {{ max-width: 700px; margin: 0 auto; background: #ffffff; }}
+        .header {{ background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: white; padding: 30px 20px; text-align: center; }}
+        .header h1 {{ margin: 0; font-size: 28px; font-weight: 600; }}
+        .header .date {{ margin-top: 8px; opacity: 0.8; font-size: 14px; }}
+        .header .stats {{ margin-top: 10px; font-size: 12px; opacity: 0.6; }}
+        
+        .source-section {{ padding: 20px; border-bottom: 1px solid #eee; }}
+        .source-title {{ font-size: 16px; font-weight: 600; color: #1a1a2e; margin-bottom: 15px; display: flex; align-items: center; }}
+        .source-title::before {{ content: ''; display: inline-block; width: 4px; height: 16px; background: #4f46e5; margin-right: 10px; border-radius: 2px; }}
+        
+        .item {{ padding: 15px 0; border-bottom: 1px solid #f0f0f0; }}
+        .item:last-child {{ border-bottom: none; }}
+        
+        .item-title {{ font-size: 15px; font-weight: 600; color: #1a1a2e; line-height: 1.4; }}
+        .item-title a {{ color: #1a1a2e; text-decoration: none; }}
+        .item-title a:hover {{ color: #4f46e5; }}
+        
+        .item-meta {{ margin-top: 6px; font-size: 12px; color: #999; }}
+        .item-summary {{ margin-top: 8px; font-size: 13px; color: #666; line-height: 1.6; }}
+        
+        .footer {{ background: #f9f9f9; padding: 20px; text-align: center; color: #999; font-size: 12px; }}
+        .footer a {{ color: #4f46e5; }}
+    </style>
+</head>
+<body>
+    <div class="container">
         <div class="header">
             <h1>🤖 AI 动态简报</h1>
-            <p>{datetime.now().strftime('%Y年%m月%d日')}</p>
+            <div class="date">{datetime.now().strftime('%Y年%m月%d日 %A')}</div>
+            <div class="stats">共 {len(news_items)} 条资讯 · {len(sources)} 个来源</div>
         </div>
-        <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
-    """
+"""
     
-    for item in news_items:
+    for source_name, items in sources.items():
         html += f"""
+        <div class="source-section">
+            <div class="source-title">{html.escape(str(source_name))}</div>
+"""
+        for item in items:
+            meta = item.get("published", "")
+            if meta:
+                meta = f" · {meta}"
+            html += f"""
             <div class="item">
-                <div class="title">{item['title']}</div>
-                <div class="summary">{item['summary']}...</div>
-                <div class="source">📌 {item['source']}</div>
+                <div class="item-title"><a href="{html.escape(item['link'])}" target="_blank">{html.escape(item['title'])}</a></div>
+                <div class="item-meta">{html.escape(item['source'])}{html.escape(meta)}</div>
+                <div class="item-summary">{html.escape(item['summary'])}</div>
             </div>
-        """
+"""
+        html += """
+        </div>
+"""
     
     html += f"""
-        </div>
         <div class="footer">
-            <p>由 GitHub Actions 自动生成</p>
+            <p>🤖 由 GitHub Actions 自动生成</p>
+            <p>数据来源: ArXiv, TechCrunch, The Verge, Wired, Hacker News, 机器之心, 36氪</p>
         </div>
-    </body>
-    </html>
-    """
+    </div>
+</body>
+</html>
+"""
     return html
 
 def send_email(html_content):
@@ -111,7 +168,7 @@ def send_email(html_content):
         return False
     
     msg = MIMEMultipart('alternative')
-    msg['Subject'] = f"🤖 AI 动态简报 - {datetime.now().strftime('%Y年%m月%d日')}"
+    msg['Subject'] = f"🤖 AI 动态简报 {datetime.now().strftime('%Y年%m月%d日')} - 共{len(RSS_SOURCES)*ITEMS_PER_SOURCE}条"
     msg['From'] = SMTP_USER
     msg['To'] = TO_EMAIL
     
@@ -133,11 +190,12 @@ def main():
     all_news = []
     
     for source in RSS_SOURCES:
-        items = fetch_rss_items(source)
+        print(f"Fetching: {source}")
+        items = fetch_rss_items(source, limit=ITEMS_PER_SOURCE)
+        print(f"  -> Got {len(items)} items")
         all_news.extend(items)
     
-    # 按来源分组输出
-    print(f"Got {len(all_news)} news items")
+    print(f"Total: {len(all_news)} news items")
     
     html = generate_html(all_news)
     
