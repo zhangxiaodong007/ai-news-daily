@@ -27,6 +27,16 @@ RSS_SOURCES = [
     
     # 英文科技媒体
     "https://techcrunch.com/category/artificial-intelligence/feed/",
+    
+    # 中文
+    "https://www.jiqizhixin.com/?feed=rss2",
+]
+RSS_SOURCES = [
+    # 学术
+    "http://arxiv.org/rss/cs.LG",
+    
+    # 英文科技媒体
+    "https://techcrunch.com/category/artificial-intelligence/feed/",
     "https://www.theverge.com/rss/ai/index.xml",
     "https://wired.com/feed/tag/ai/rss",
     
