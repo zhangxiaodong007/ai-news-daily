@@ -21,6 +21,10 @@ TO_EMAIL = os.getenv("TO_EMAIL")
 ITEMS_PER_SOURCE = 10
 
 RSS_SOURCES = [
+    "https://rss.beehiiv.com/the-rundown-ai",
+    "https://www.bensbites.com/feed",
+    "https://www.jiqizhixin.com/?feed=rss2",
+]
     "http://arxiv.org/rss/cs.LG",
     "https://techcrunch.com/category/artificial-intelligence/feed/",
     "https://www.jiqizhixin.com/?feed=rss2",
