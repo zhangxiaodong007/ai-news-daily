@@ -18,7 +18,14 @@ SMTP_USER = os.getenv("SMTP_USER")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 TO_EMAIL = os.getenv("TO_EMAIL")
 
-ITEMS_PER_SOURCE = 15
+# RSS 源 - 可靠的英文科技源
+RSS_SOURCES = [
+    "https://techcrunch.com/category/artificial-intelligence/feed/",
+    "https://www.bensbites.com/feed",
+    "https://venturebeat.com/category/ai/feed/",
+    "https://www.the-decoder.com/feed/",
+    "https://www.zdnet.com/news/rss.xml",
+]
 
 # RSS 源 - 使用更可靠的来源
 RSS_SOURCES = [
